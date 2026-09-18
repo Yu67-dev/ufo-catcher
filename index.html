@@ -57,6 +57,46 @@ canvas#stage{width:100%;display:block;border-radius:22px;box-shadow:0 10px 26px 
 .btn.go{grid-column:1/3;background:linear-gradient(180deg,#ff8fb8,#ff5c95);font-size:24px;padding:20px 4px}
 .btn[disabled]{filter:grayscale(.6);opacity:.55}
 
+section[hidden]{display:none !important}
+.chip.fs{background:#c9c0f5;color:#463a7a}
+
+/* ---- たてむきで せの ひくい がめん：はみ出さないよう つめる ---- */
+@media (orientation:portrait) and (max-height:860px){
+  canvas#stage{width:min(100%,calc((100vh - 215px) * 480 / 660));
+               width:min(100%,calc((100dvh - 215px) * 480 / 660));margin:0 auto}
+  #app{gap:7px;padding:6px 8px 12px}
+  .msg{min-height:26px;font-size:17px}
+  .btn{padding:12px 4px;font-size:17px}
+  .btn.go{padding:15px 4px;font-size:21px}
+  .chip{padding:6px 11px;font-size:13px}
+}
+
+/* ---- よこながタブレット ---- */
+@media (orientation:landscape){
+  body{align-items:center}
+  #app{max-width:1250px;height:100vh;height:100dvh;padding:8px 12px;gap:8px}
+  #select{display:flex;flex-direction:column;justify-content:center;flex:1;min-height:0}
+  .title h1{font-size:34px}
+  .picks{flex-direction:row;gap:18px}
+  .pick{flex:1;flex-direction:column;text-align:center;padding:18px 10px}
+  .pick canvas{width:88px;height:88px}
+  .pick .tx{text-align:center}
+  #game{display:grid;grid-template-columns:auto minmax(230px,430px);justify-content:center;
+        grid-template-rows:auto 1fr;column-gap:18px;row-gap:8px;
+        flex:1;min-height:0;height:100%}
+  #game .bar{grid-column:2;grid-row:1;align-self:start;flex-wrap:wrap}
+  #game .bar .sp{display:none}
+  canvas#stage{grid-column:1;grid-row:1 / 3;height:calc(100vh - 20px);height:calc(100dvh - 20px);
+        width:auto;max-width:100%;justify-self:start}
+  #game .side{grid-column:2;grid-row:2;display:flex;flex-direction:column;
+        justify-content:center;gap:14px;min-width:0}
+  .msg{font-size:22px;min-height:52px}
+  .btn{padding:20px 4px;font-size:21px}
+  .btn.go{padding:30px 4px;font-size:28px}
+  .sheetIn{max-height:96vh;border-radius:22px;margin:2vh 0}
+  .grid{grid-template-columns:repeat(6,1fr)}
+}
+
 /* ---- ずかん ---- */
 .sheet{position:fixed;inset:0;background:rgba(60,45,80,.45);display:flex;justify-content:center;align-items:flex-end;z-index:20}
 .sheet[hidden]{display:none}
@@ -78,7 +118,10 @@ canvas#stage{width:100%;display:block;border-radius:22px;box-shadow:0 10px 26px 
 .cell span{font-size:10.5px;line-height:1.2;color:#5b5273;word-break:keep-all}
 .cell.locked{background:#eee9f2;box-shadow:none}
 .cell.locked span{color:#b3abc4}
-.closeBtn{display:block;width:100%;margin-top:14px;border:none;border-radius:18px;padding:14px;
+.voiceTest{display:block;width:100%;margin-top:14px;border:none;border-radius:16px;padding:12px;
+  background:#ffd76a;color:#6b4e12;font-size:15px;font-weight:bold;font-family:inherit;cursor:pointer}
+.voiceNote{min-height:18px;text-align:center;font-size:12.5px;color:#c2574d;margin-top:6px}
+.closeBtn{display:block;width:100%;margin-top:10px;border:none;border-radius:18px;padding:14px;
   background:#7e6fd8;color:#fff;font-size:17px;font-weight:bold;font-family:inherit;cursor:pointer}
 </style>
 </head>
@@ -98,13 +141,17 @@ canvas#stage{width:100%;display:block;border-radius:22px;box-shadow:0 10px 26px 
       <button class="chip" id="back">← もどる</button>
       <div class="sp"></div>
       <button class="chip zu" id="openZu">ずかん <b id="cnt">0</b></button>
+      <button class="chip fs" id="fs">⛶ ぜんがめん</button>
+      <button class="chip fs" id="exitFs" hidden>↩ もとにもどす</button>
     </div>
     <canvas id="stage"></canvas>
-    <div class="msg" id="msg">ボタンで うごかしてね</div>
-    <div class="pad">
-      <button class="btn l" id="bL">◀ ちょうせい</button>
-      <button class="btn r" id="bR">みぎへ ▶</button>
-      <button class="btn go" id="bGo">これに する！</button>
+    <div class="side">
+      <div class="msg" id="msg">ボタンで うごかしてね</div>
+      <div class="pad">
+        <button class="btn l" id="bL">◀ ちょうせい</button>
+        <button class="btn r" id="bR">みぎへ ▶</button>
+        <button class="btn go" id="bGo">これに する！</button>
+      </div>
     </div>
   </section>
 
@@ -116,6 +163,8 @@ canvas#stage{width:100%;display:block;border-radius:22px;box-shadow:0 10px 26px 
     <div class="prog" id="prog"></div>
     <div class="tabs" id="tabs"></div>
     <div class="grid" id="grid"></div>
+    <button class="voiceTest" id="voiceTest">🔊 こえを ためす</button>
+    <div class="voiceNote" id="voiceNote"></div>
     <button class="closeBtn" id="closeZu">とじる</button>
   </div>
 </div>
@@ -572,28 +621,64 @@ const sFail =()=>{beep(392,.18,'sine',.11);beep(294,.32,'sine',.11,.16);};
 const sSpark=()=>{[1568,2093,2637].forEach((f,i)=>beep(f,.22,'sine',.09,i*.06));};
 
 /* ============ よみあげ ============ */
-let jaVoice=null;
+/* iPad/iPhone の Safari は「ユーザーが触った流れの中で1回 speak する」まで声を出さない。
+   さらに getVoices() は遅れて埋まる。なので ①最初のタップで無音を1回しゃべって解錠
+   ②声の一覧が来たら選び直す ③しゃべる直前に resume() を叩く、の3つを入れている。 */
+let jaVoice=null, speechOK=false;
 function pickVoice(){
   if(!window.speechSynthesis)return;
-  const vs=speechSynthesis.getVoices().filter(v=>/ja(-|_)?JP/i.test(v.lang)||/japanese/i.test(v.name));
+  let vs=[];
+  try{ vs=speechSynthesis.getVoices()||[]; }catch(e){ return; }
+  vs=vs.filter(v=>/^ja/i.test(v.lang||'')||/ja[-_]JP/i.test(v.lang||'')||/japanese|日本語/i.test(v.name||''));
   if(!vs.length)return;
-  const rank=n=>{n=n.toLowerCase();
+  const rank=n=>{n=(n||'').toLowerCase();
     if(n.includes('kyoko'))return 0; if(n.includes('o-ren')||n.includes('oren'))return 1;
     if(n.includes('otoya'))return 2; if(n.includes('google'))return 3;
     if(n.includes('hattori')||n.includes('sayaka'))return 4;
-    if(n.includes('(拡張)')||n.includes('premium')||n.includes('enhanced'))return 5; return 6;};
+    if(n.includes('拡張')||n.includes('premium')||n.includes('enhanced'))return 5; return 6;};
   vs.sort((a,b)=>rank(a.name)-rank(b.name));
   jaVoice=vs[0];
 }
-if(window.speechSynthesis){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+if(window.speechSynthesis){
+  pickVoice();
+  speechSynthesis.addEventListener?speechSynthesis.addEventListener('voiceschanged',pickVoice):speechSynthesis.onvoiceschanged=pickVoice;
+  setTimeout(pickVoice,400); setTimeout(pickVoice,1500);
+}
+function unlockSpeech(){
+  if(speechOK||!window.speechSynthesis)return;
+  try{
+    const u=new SpeechSynthesisUtterance('　');
+    u.volume=0; u.lang='ja-JP'; u.rate=1.4;
+    speechSynthesis.speak(u);
+    speechOK=true;
+    pickVoice();
+  }catch(e){}
+}
+function voiceHint(t){ const e=document.getElementById('voiceNote'); if(e) e.textContent=t||''; }
 function say(text){
   if(!window.speechSynthesis)return;
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);
-  if(jaVoice)u.voice=jaVoice;
-  u.lang='ja-JP'; u.rate=.95; u.pitch=1.05; u.volume=1;
-  speechSynthesis.speak(u);
+  unlockSpeech();
+  try{
+    if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    if(jaVoice)u.voice=jaVoice;
+    u.lang='ja-JP'; u.rate=.95; u.pitch=1.05; u.volume=1;
+    u.onstart=()=>voiceHint('');
+    u.onerror=e=>{
+      const er=e&&e.error;
+      /* not-allowed＝タップの流れの外から喋ろうとして断られた。次のタップで開け直す。 */
+      if(er==='not-allowed'||er==='interrupted'){ speechOK=false; }
+      if(er==='not-allowed') voiceHint('がめんを 1かい タップしてから もういちど おしてね');
+      else if(er&&er!=='canceled') voiceHint('よみあげ エラー: '+er);
+    };
+    speechSynthesis.speak(u);
+    setTimeout(()=>{ try{ if(speechSynthesis.paused)speechSynthesis.resume(); }catch(e){} },160);
+  }catch(e){}
 }
+/* さわった いちばん さいしょに 音と声の かぎを あける */
+function firstTouch(){ ac(); unlockSpeech(); }
+['pointerdown','touchend','click','keydown'].forEach(ev=>
+  document.addEventListener(ev,firstTouch,{capture:true,passive:true}));
 
 /* ============ ずかん（ほぞん） ============ */
 const KEY='ufo_zukan_v1';
@@ -849,6 +934,24 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('keyup',e=>{ if(e.key==='ArrowRight')holdR=false; if(e.key==='ArrowLeft')holdL=false; });
 
+/* ============ ぜんがめん ============ */
+const fsBtn=document.getElementById('fs'), exitBtn=document.getElementById('exitFs');
+function fsOn(){ return !!(document.fullscreenElement||document.webkitFullscreenElement); }
+function syncFs(){ fsBtn.hidden=fsOn(); exitBtn.hidden=!fsOn(); setTimeout(fit,120); }
+fsBtn.addEventListener('click',()=>{
+  const e=document.documentElement;
+  const req=e.requestFullscreen||e.webkitRequestFullscreen;
+  if(!req){ setMsg('このブラウザは ぜんがめんに できません'); return; }
+  Promise.resolve(req.call(e)).catch(()=>setMsg('ぜんがめんに できませんでした'));
+});
+exitBtn.addEventListener('click',()=>{
+  const x=document.exitFullscreen||document.webkitExitFullscreen;
+  if(x) Promise.resolve(x.call(document)).catch(()=>{});
+});
+['fullscreenchange','webkitfullscreenchange'].forEach(ev=>document.addEventListener(ev,syncFs));
+window.addEventListener('orientationchange',()=>setTimeout(fit,250));
+syncFs();
+
 /* ============ えらぶ がめん ============ */
 const picks=document.getElementById('picks');
 Object.keys(SETS).forEach(k=>{
@@ -909,6 +1012,15 @@ function renderZu(){
   });
 }
 document.getElementById('openZu').addEventListener('click',()=>{ ac(); zuKey=setKey; renderZu(); sheet.hidden=false; });
+document.getElementById('voiceTest').addEventListener('click',()=>{
+  unlockSpeech(); sSpark();
+  if(!window.speechSynthesis){ voiceHint('このブラウザは よみあげに たいおうしていません'); return; }
+  voiceHint('…はなしています');
+  say('こんにちは。こえは きこえていますか。');
+  setTimeout(()=>{ const e=document.getElementById('voiceNote');
+    if(e&&e.textContent==='…はなしています')
+      e.textContent='おとが しないときは、本体の音量と 消音スイッチを みてね'; },2200);
+});
 document.getElementById('closeZu').addEventListener('click',()=>{ sheet.hidden=true; if(window.speechSynthesis)speechSynthesis.cancel(); });
 sheet.addEventListener('click',e=>{ if(e.target===sheet){sheet.hidden=true;} });
 
