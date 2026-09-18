@@ -675,8 +675,52 @@ function say(text){
     setTimeout(()=>{ try{ if(speechSynthesis.paused)speechSynthesis.resume(); }catch(e){} },160);
   }catch(e){}
 }
+/* ============ こえ（Kyokoの ろくおん ファイル） ============ */
+/* タブレットの よみあげ機能（speechSynthesis）は
+   ・日本語の声が入っていない
+   ・タップの流れの外だと拒否される
+   で鳴らないことがある。効果音と同じ Web Audio で ろくおん を鳴らすのが確実。
+   ファイルが読めないとき（ローカルの file:// など）だけ よみあげ に戻す。 */
+const KOE='koe/', VPRE={mushi:'m',kyoryu:'k',tokage:'t'};
+const vkey=(set,i)=>VPRE[set]+String(i).padStart(2,'0');
+const vbuf={}; let vSrc=[], voiceFile=null;   /* voiceFile: true=ファイル再生 / false=よみあげ */
+async function vload(k){
+  if(k in vbuf) return vbuf[k];
+  const c=ac(); if(!c){ vbuf[k]=null; return null; }
+  try{
+    const r=await fetch(KOE+k+'.m4a');
+    if(!r.ok) throw new Error(r.status);
+    vbuf[k]=await c.decodeAudioData(await r.arrayBuffer());
+  }catch(e){ vbuf[k]=null; }
+  return vbuf[k];
+}
+function vstop(){ vSrc.forEach(s=>{ try{s.stop()}catch(e){} }); vSrc=[]; }
+async function playVoice(keys,fallback){
+  const c=ac();
+  if(!c){ say(fallback); return; }
+  /* resume() は ユーザー操作前だと ずっと保留になる。await しない。 */
+  if(c.state==='suspended'){ try{ c.resume(); }catch(e){} }
+  const bufs=[];
+  for(const k of keys){ const b=await vload(k); if(b) bufs.push(b); }
+  if(!bufs.length){ voiceFile=false; say(fallback); return; }
+  voiceFile=true;
+  vstop();
+  let t=c.currentTime+0.03;
+  for(const b of bufs){
+    const src=c.createBufferSource(); src.buffer=b;
+    const g=c.createGain(); g.gain.value=1;
+    src.connect(g); g.connect(c.destination);
+    src.start(t); t+=b.duration+0.05;
+    vSrc.push(src);
+  }
+}
+function preloadVoice(set){
+  ['get','hajimete','complete','mada','test'].forEach(vload);
+  for(let i=0;i<12;i++) vload(vkey(set,i));
+}
+
 /* さわった いちばん さいしょに 音と声の かぎを あける */
-function firstTouch(){ ac(); unlockSpeech(); }
+function firstTouch(){ ac(); unlockSpeech(); preloadVoice(setKey); }
 ['pointerdown','touchend','click','keydown'].forEach(ev=>
   document.addEventListener(ev,firstTouch,{capture:true,passive:true}));
 
@@ -838,9 +882,9 @@ function got(t){
   if(first){ book[setKey].push(t.idx); saveBook(); }
   updateCnt();
   setMsg((first?'はじめて ゲット！ ':'ゲット！ ')+t.sp.n);
-  setTimeout(()=>say(t.sp.n+'、ゲット！'),260);
+  setTimeout(()=>playVoice([vkey(setKey,t.idx), first?'hajimete':'get'], t.sp.n+'、ゲット'),260);
   if(first && book[setKey].length===SETS[setKey].list.length){
-    setTimeout(()=>{ setMsg('ずかん コンプリート！！'); say('ずかん、コンプリート、おめでとう！'); burst(W/2,H/2,60); },1600);
+    setTimeout(()=>{ setMsg('ずかん コンプリート！！'); playVoice(['complete'],'ずかん コンプリート。おめでとう'); burst(W/2,H/2,60); },1600);
   }
   toys.push(spawn(undefined, LEFT+R+Math.random()*(RIGHT-LEFT-R*2), GY+40));
 }
@@ -967,7 +1011,7 @@ Object.keys(SETS).forEach(k=>{
   picks.appendChild(b);
 });
 function start(k){
-  setKey=k; fill(); clawX=LEFT+90; clawY=TOPY; open=1; st='aim'; held=null;
+  setKey=k; preloadVoice(k); fill(); clawX=LEFT+90; clawY=TOPY; open=1; st='aim'; held=null;
   document.getElementById('select').hidden=true;
   document.getElementById('game').hidden=false;
   updateCnt(); setMsg('ボタンで うごかしてね');
@@ -984,7 +1028,7 @@ const sheet=document.getElementById('sheet'), grid=document.getElementById('grid
 let zuKey='mushi';
 Object.keys(SETS).forEach(k=>{
   const b=document.createElement('button'); b.className='tab'; b.textContent=SETS[k].label;
-  b.addEventListener('click',()=>{zuKey=k;renderZu();});
+  b.addEventListener('click',()=>{zuKey=k;preloadVoice(k);renderZu();});
   b.dataset.k=k; tabs.appendChild(b);
 });
 function renderZu(){
@@ -1005,8 +1049,8 @@ function renderZu(){
     b.appendChild(c); b.appendChild(sn);
     b.addEventListener('click',()=>{
       ac();
-      if(got){ sSpark(); say(sp.n); }
-      else { sFail(); say('まだ とってないよ'); }
+      if(got){ sSpark(); playVoice([vkey(zuKey,i)], sp.n); }
+      else { sFail(); playVoice(['mada'],'まだ とってないよ'); }
     });
     grid.appendChild(b);
   });
@@ -1016,10 +1060,12 @@ document.getElementById('voiceTest').addEventListener('click',()=>{
   unlockSpeech(); sSpark();
   if(!window.speechSynthesis){ voiceHint('このブラウザは よみあげに たいおうしていません'); return; }
   voiceHint('…はなしています');
-  say('こんにちは。こえは きこえていますか。');
+  playVoice(['test'],'こんにちは。こえは きこえていますか。');
   setTimeout(()=>{ const e=document.getElementById('voiceNote');
-    if(e&&e.textContent==='…はなしています')
-      e.textContent='おとが しないときは、本体の音量と 消音スイッチを みてね'; },2200);
+    if(!e) return;
+    if(voiceFile===true) e.textContent='ろくおんの こえで ならしました（きこえない＝本体の音量／消音スイッチ）';
+    else if(voiceFile===false) e.textContent='こえファイルが よめず、ブラウザの よみあげを つかいました';
+    else if(e.textContent==='…はなしています') e.textContent='おとが しないときは 本体の音量と 消音スイッチを みてね'; },2200);
 });
 document.getElementById('closeZu').addEventListener('click',()=>{ sheet.hidden=true; if(window.speechSynthesis)speechSynthesis.cancel(); });
 sheet.addEventListener('click',e=>{ if(e.target===sheet){sheet.hidden=true;} });
